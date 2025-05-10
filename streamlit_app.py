@@ -2,6 +2,11 @@ import os
 import urllib.request
 import shutil
 from pathlib import Path
+import asyncio
+import nest_asyncio
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 # Create and set permissions for model directory
 MODEL_DIR = "/tmp/mediapipe"
@@ -25,6 +30,16 @@ if not os.path.exists(MODEL_PATH):
         print("Model downloaded successfully!")
     except Exception as e:
         print(f"Error downloading model: {e}")
+        # Try alternative URL if first one fails
+        try:
+            ALT_MODEL_URL = "https://storage.googleapis.com/mediapipe-assets/pose_landmarker_lite.tflite"
+            print("Trying alternative model URL...")
+            with urllib.request.urlopen(ALT_MODEL_URL) as response, open(MODEL_PATH, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+            os.chmod(MODEL_PATH, 0o666)
+            print("Model downloaded successfully from alternative URL!")
+        except Exception as e2:
+            print(f"Error downloading model from alternative URL: {e2}")
 
 import streamlit as st
 import cv2
