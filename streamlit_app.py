@@ -1,28 +1,35 @@
 import os
 import urllib.request
 import shutil
+import sys
+from pathlib import Path
 
-# Set MediaPipe model path and ensure directory exists
-os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
-os.makedirs("/tmp/mediapipe", exist_ok=True)
-os.chmod("/tmp/mediapipe", 0o777)  # Give full permissions to the directory
+# Create and set permissions for model directory
+MODEL_DIR = "/tmp/mediapipe"
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.chmod(MODEL_DIR, 0o777)
 
-# Pre-download MediaPipe model
+# Patch MediaPipe's download path
+sys.modules['mediapipe'] = type('', (), {})()
+sys.modules['mediapipe'].__path__ = [MODEL_DIR]
+
+# Set environment variables
+os.environ["MEDIAPIPE_MODEL_PATH"] = MODEL_DIR
+os.environ["MEDIAPIPE_POSE_LANDMARK_MODEL_PATH"] = os.path.join(MODEL_DIR, "pose_landmarker_lite.tflite")
+
+# Download model if not exists
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.tflite"
-MODEL_PATH = "/tmp/mediapipe/pose_landmarker_lite.tflite"
+MODEL_PATH = os.path.join(MODEL_DIR, "pose_landmarker_lite.tflite")
 
 if not os.path.exists(MODEL_PATH):
     try:
         print("Downloading MediaPipe model...")
         with urllib.request.urlopen(MODEL_URL) as response, open(MODEL_PATH, 'wb') as out_file:
             shutil.copyfileobj(response, out_file)
+        os.chmod(MODEL_PATH, 0o666)  # Make model file readable/writable
         print("Model downloaded successfully!")
     except Exception as e:
         print(f"Error downloading model: {e}")
-
-# Set environment variable to use our downloaded model
-os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
-os.environ["MEDIAPIPE_POSE_LANDMARK_MODEL_PATH"] = MODEL_PATH
 
 import streamlit as st
 import cv2
