@@ -1,8 +1,8 @@
-tensorflow==2.12.0
-streamlit==1.22.0
-opencv-python-headless==4.7.0.72
-mediapipe==0.10.0
-numpy==1.23.5
-scikit-learn==1.2.2
-matplotlib==3.7.1
-psutil==5.9.0 
+tensorflow==2.19.0
+streamlit==1.45.0
+opencv-python-headless==4.8.1.78
+mediapipe==0.10.14
+numpy==1.26.4
+scikit-learn==1.4.1
+matplotlib==3.8.3
+psutil==5.9.8 
