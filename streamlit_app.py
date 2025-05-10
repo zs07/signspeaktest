@@ -18,13 +18,15 @@ os.environ["MEDIAPIPE_MODEL_PATH"] = MODEL_DIR
 os.environ["MEDIAPIPE_POSE_LANDMARK_MODEL_PATH"] = os.path.join(MODEL_DIR, "pose_landmarker_lite.tflite")
 
 # Download model if not exists
-MODEL_URL = "https://storage.googleapis.com/mediapipe-assets/pose_landmarker_lite.tflite"
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.tflite"
 MODEL_PATH = os.path.join(MODEL_DIR, "pose_landmarker_lite.tflite")
 
 if not os.path.exists(MODEL_PATH):
     try:
         print("Downloading MediaPipe model...")
-        with urllib.request.urlopen(MODEL_URL) as response, open(MODEL_PATH, 'wb') as out_file:
+        headers = {'User-Agent': 'Mozilla/5.0'}  # Add user agent to avoid 403
+        req = urllib.request.Request(MODEL_URL, headers=headers)
+        with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
             shutil.copyfileobj(response, out_file)
         os.chmod(MODEL_PATH, 0o666)  # Make model file readable/writable
         print("Model downloaded successfully!")
@@ -34,12 +36,14 @@ if not os.path.exists(MODEL_PATH):
         try:
             ALT_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.tflite"
             print("Trying alternative model URL...")
-            with urllib.request.urlopen(ALT_MODEL_URL) as response, open(MODEL_PATH, 'wb') as out_file:
+            req = urllib.request.Request(ALT_MODEL_URL, headers=headers)
+            with urllib.request.urlopen(req) as response, open(MODEL_PATH, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
             os.chmod(MODEL_PATH, 0o666)
             print("Model downloaded successfully from alternative URL!")
         except Exception as e2:
             print(f"Error downloading model from alternative URL: {e2}")
+            print("Please check your internet connection and try again.")
 
 import streamlit as st
 import cv2
