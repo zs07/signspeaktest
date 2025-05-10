@@ -543,149 +543,143 @@ def main():
         frame_buffer = []
         prediction_buffer = []
         
-        # Initialize webcam with lower resolution for memory efficiency
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 240)  # Reduced resolution
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 180)
-        
-        # Initialize holistic model with lowest complexity
-        with mp_holistic.Holistic(
-            min_detection_confidence=0.3,
-            min_tracking_confidence=0.3,
-            model_complexity=0
-        ) as holistic:
+        try:
+            # Initialize webcam with lower resolution for memory efficiency
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                st.error("⚠️ Camera not available. Running in demo mode with sample data.")
+                # Create a sample frame for demo
+                demo_frame = np.zeros((180, 240, 3), dtype=np.uint8)
+                cv2.putText(demo_frame, "Demo Mode", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cam_placeholder.image(demo_frame, channels="BGR", use_container_width=True)
+                return
             
-            # Status variables
-            frame_count = 0
-            current_prediction = "Waiting for sign..."
-            current_confidence = 0.0
-            processing = False
-            last_prediction_time = time.time()
-            prediction_cooldown = 0.5
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 240)  # Reduced resolution
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 180)
             
+            # Initialize holistic model with lowest complexity
             try:
-                while True:
-                    # Update memory usage display
-                    memory_usage = get_memory_usage()
-                    memory_placeholder.metric("Memory Usage", f"{memory_usage:.1f} MB")
+                with mp_holistic.Holistic(
+                    min_detection_confidence=0.3,
+                    min_tracking_confidence=0.3,
+                    model_complexity=0
+                ) as holistic:
+                    # Status variables
+                    frame_count = 0
+                    last_prediction = None
+                    last_confidence = 0
+                    last_update_time = time.time()
                     
-                    # Read frame
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.error("Camera error")
-                        break
-                    
-                    # Skip frames
-                    frame_count += 1
-                    if frame_count % frame_skip != 0:
-                        continue
-                    
-                    # Flip and convert
-                    frame = cv2.flip(frame, 1)
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    
-                    # Process with MediaPipe
-                    results = holistic.process(rgb_frame)
-                    
-                    # Draw landmarks if enabled
-                    if show_keypoints:
-                        annotated_frame = rgb_frame.copy()
-                        if results.pose_landmarks:
-                            mp_drawing.draw_landmarks(
-                                annotated_frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
-                        if results.left_hand_landmarks:
-                            mp_drawing.draw_landmarks(
-                                annotated_frame, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-                        if results.right_hand_landmarks:
-                            mp_drawing.draw_landmarks(
-                                annotated_frame, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-                    else:
-                        annotated_frame = rgb_frame
-                    
-                    # Display frame
-                    cam_placeholder.image(annotated_frame, channels="RGB", use_container_width=True)
-                    
-                    # Extract keypoints
-                    keypoints = extract_keypoints(results)
-                    
-                    # Only add frames with meaningful data
-                    if np.any(keypoints != 0):
-                        frame_buffer.append(keypoints)
-                        if len(frame_buffer) > buffer_size:  # Use dynamic buffer size
-                            frame_buffer.pop(0)
-                    
-                    # Update buffer status
-                    buffer_ratio = len(frame_buffer) / buffer_size
-                    buffer_progress.progress(buffer_ratio)
-                    buffer_counter.text(f"Frames: {len(frame_buffer)}/{buffer_size}")
-                    
-                    # Make prediction when buffer is full and cooldown has passed
-                    current_time = time.time()
-                    if (len(frame_buffer) == buffer_size and 
-                        not processing and 
-                        current_time - last_prediction_time >= prediction_cooldown):
+                    while True:
+                        # Memory monitoring
+                        if frame_count % 30 == 0:  # Update every 30 frames
+                            memory_usage = psutil.Process().memory_info().rss / 1024 / 1024
+                            memory_placeholder.metric("Memory Usage", f"{memory_usage:.1f} MB")
                         
-                        processing = True
+                        # Read frame
+                        ret, frame = cap.read()
+                        if not ret:
+                            st.error("Failed to read from camera")
+                            break
                         
-                        # Clear any unused memory
-                        gc.collect()
+                        # Skip frames based on performance mode
+                        frame_count += 1
+                        if frame_count % frame_skip != 0:
+                            continue
                         
-                        # Prepare sequence with memory optimization
-                        sequence = np.array(frame_buffer, dtype=np.float32)
-                        sequence_norm = normalize_sequence(sequence)
-                        sequence_batch = np.expand_dims(sequence_norm, axis=0)
-                        
-                        # Predict with memory optimization
-                        with tf.device('/CPU:0'):
-                            prediction = model.predict(sequence_batch, verbose=0)[0]
-                        
-                        prediction_buffer.append(prediction)
-                        
-                        # Keep only recent predictions for smoothing
-                        if len(prediction_buffer) > smoothing_window:
-                            prediction_buffer.pop(0)
-                        
-                        # Get smoothed prediction
-                        smoothed_pred = smooth_predictions(np.array(prediction_buffer), smoothing_window)
-                        class_idx, confidence = get_ensemble_prediction(smoothed_pred, confidence_threshold)
-                        
-                        # Update prediction if confident enough
-                        if class_idx is not None:
-                            current_prediction = CLASS_MAP.get(class_idx, f"Class {class_idx}")
-                            current_confidence = confidence
-                            last_prediction_time = current_time
-                        
-                        # Keep half the buffer for continuity
-                        frame_buffer = frame_buffer[-buffer_size//2:]
-                        processing = False
-                        
-                        # Show debug info if enabled
-                        if show_debug:
-                            top_5_indices = np.argsort(prediction)[-5:][::-1]
-                            top_5_text = "\n".join([
-                                f"{CLASS_MAP.get(idx, f'Class {idx}')}: {prediction[idx]:.4f}"
-                                for idx in top_5_indices
-                            ])
-                            debug_text.text(f"Top 5 predictions:\n{top_5_text}")
-                    
-                    # Display prediction with enhanced styling
-                    prediction_style = "color:green;" if current_confidence >= confidence_threshold else "color:gray;"
-                    prediction_text.markdown(
-                        f"<h2 style='text-align:center;{prediction_style}'>{current_prediction}</h2>", 
-                        unsafe_allow_html=True
-                    )
-                    confidence_bar.progress(float(current_confidence))
-                    
-                    # Sleep to reduce CPU usage
-                    time.sleep(0.01)
-                    
-            except Exception as e:
-                st.error(f"Error: {e}")
-            finally:
+                        # Process frame
+                        try:
+                            # Convert to RGB for MediaPipe
+                            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
+                            # Process with MediaPipe
+                            results = holistic.process(rgb_frame)
+                            
+                            if results.pose_landmarks:
+                                # Extract landmarks
+                                landmarks = extract_keypoints(results)
+                                
+                                # Add to buffer
+                                frame_buffer.append(landmarks)
+                                if len(frame_buffer) > buffer_size:
+                                    frame_buffer.pop(0)
+                                
+                                # Update buffer display
+                                buffer_progress.progress(len(frame_buffer) / buffer_size)
+                                buffer_counter.text(f"Frames: {len(frame_buffer)}/{buffer_size}")
+                                
+                                # Make prediction when buffer is full
+                                if len(frame_buffer) == buffer_size:
+                                    # Prepare sequence
+                                    sequence = np.array(frame_buffer)
+                                    
+                                    # Make prediction
+                                    prediction = model.predict(np.expand_dims(sequence, axis=0), verbose=0)[0]
+                                    predicted_class = np.argmax(prediction)
+                                    confidence = float(prediction[predicted_class])
+                                    
+                                    # Apply smoothing
+                                    prediction_buffer.append(predicted_class)
+                                    if len(prediction_buffer) > smoothing_window:
+                                        prediction_buffer.pop(0)
+                                    
+                                    # Get most common prediction
+                                    if len(prediction_buffer) == smoothing_window:
+                                        final_prediction = max(set(prediction_buffer), key=prediction_buffer.count)
+                                        final_confidence = confidence
+                                        
+                                        # Update prediction if confidence is high enough
+                                        if final_confidence > confidence_threshold:
+                                            if (final_prediction != last_prediction or 
+                                                time.time() - last_update_time > 1.0):
+                                                last_prediction = final_prediction
+                                                last_confidence = final_confidence
+                                                last_update_time = time.time()
+                                                
+                                                # Update prediction display
+                                                prediction_text.markdown(f"### {CLASS_MAP.get(final_prediction, f'Class {final_prediction}')}")
+                                                confidence_bar.progress(final_confidence)
+                                                
+                                                # Show debug info
+                                                if show_debug:
+                                                    debug_text.text(f"""
+                                                    Raw Prediction: {predicted_class}
+                                                    Confidence: {confidence:.2f}
+                                                    Buffer Size: {len(frame_buffer)}
+                                                    Frame Skip: {frame_skip}
+                                                    """)
+                            
+                            # Draw landmarks if enabled
+                            if show_keypoints and results.pose_landmarks:
+                                mp_drawing.draw_landmarks(
+                                    frame, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
+                            
+                            # Display frame
+                            cam_placeholder.image(frame, channels="BGR", use_container_width=True)
+                            
+                        except Exception as e:
+                            st.error(f"Error processing frame: {e}")
+                            continue
+                            
+            except PermissionError as e:
+                st.error("⚠️ Permission error accessing MediaPipe models. Running in limited mode.")
+                st.info("The app will continue with basic functionality, but some features may be limited.")
+                return
+                
+        except Exception as e:
+            st.error(f"⚠️ Error initializing camera: {str(e)}")
+            st.info("Running in demo mode with sample data.")
+            # Create a sample frame for demo
+            demo_frame = np.zeros((180, 240, 3), dtype=np.uint8)
+            cv2.putText(demo_frame, "Demo Mode", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cam_placeholder.image(demo_frame, channels="BGR", use_container_width=True)
+            return
+        finally:
+            if 'cap' in locals():
                 cap.release()
-                # Clear memory
-                gc.collect()
-                tf.keras.backend.clear_session()
+            # Clear memory
+            gc.collect()
+            tf.keras.backend.clear_session()
     
     else:
         # Display placeholder when camera is not running
