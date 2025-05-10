@@ -1,7 +1,6 @@
 import os
 import urllib.request
 import shutil
-import sys
 from pathlib import Path
 
 # Create and set permissions for model directory
@@ -9,11 +8,7 @@ MODEL_DIR = "/tmp/mediapipe"
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.chmod(MODEL_DIR, 0o777)
 
-# Patch MediaPipe's download path
-sys.modules['mediapipe'] = type('', (), {})()
-sys.modules['mediapipe'].__path__ = [MODEL_DIR]
-
-# Set environment variables
+# Set environment variables for MediaPipe
 os.environ["MEDIAPIPE_MODEL_PATH"] = MODEL_DIR
 os.environ["MEDIAPIPE_POSE_LANDMARK_MODEL_PATH"] = os.path.join(MODEL_DIR, "pose_landmarker_lite.tflite")
 
@@ -90,12 +85,15 @@ class SignLanguageProcessor(VideoProcessorBase):
         self.frame_count = 0
         self.frame_skip = 2
         self.show_keypoints = True
+        
+        # Initialize MediaPipe with custom model path
         self.mp_holistic = mp.solutions.holistic
         self.mp_drawing = mp.solutions.drawing_utils
         self.holistic = self.mp_holistic.Holistic(
             min_detection_confidence=0.3,
             min_tracking_confidence=0.3,
-            model_complexity=0
+            model_complexity=0,
+            static_image_mode=False
         )
         self.model = None
         self.prediction_queue = queue.Queue()
