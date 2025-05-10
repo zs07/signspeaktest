@@ -20,6 +20,10 @@ if not os.path.exists(MODEL_PATH):
     except Exception as e:
         print(f"Error downloading model: {e}")
 
+# Set environment variable to use our downloaded model
+os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
+os.environ["MEDIAPIPE_POSE_LANDMARK_MODEL_PATH"] = MODEL_PATH
+
 import streamlit as st
 import cv2
 import numpy as np
