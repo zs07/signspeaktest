@@ -1,5 +1,9 @@
 import os
+# Set MediaPipe model path and ensure directory exists
 os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
+os.makedirs("/tmp/mediapipe", exist_ok=True)
+os.chmod("/tmp/mediapipe", 0o777)  # Give full permissions to the directory
+
 import streamlit as st
 import cv2
 import numpy as np
