@@ -1,8 +1,24 @@
 import os
+import urllib.request
+import shutil
+
 # Set MediaPipe model path and ensure directory exists
 os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
 os.makedirs("/tmp/mediapipe", exist_ok=True)
 os.chmod("/tmp/mediapipe", 0o777)  # Give full permissions to the directory
+
+# Pre-download MediaPipe model
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.tflite"
+MODEL_PATH = "/tmp/mediapipe/pose_landmarker_lite.tflite"
+
+if not os.path.exists(MODEL_PATH):
+    try:
+        print("Downloading MediaPipe model...")
+        with urllib.request.urlopen(MODEL_URL) as response, open(MODEL_PATH, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
+        print("Model downloaded successfully!")
+    except Exception as e:
+        print(f"Error downloading model: {e}")
 
 import streamlit as st
 import cv2
