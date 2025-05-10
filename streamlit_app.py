@@ -1,3 +1,5 @@
+import os
+os.environ["MEDIAPIPE_MODEL_PATH"] = "/tmp/mediapipe"
 import streamlit as st
 import cv2
 import numpy as np
